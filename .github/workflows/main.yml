@@ -18,54 +18,24 @@ concurrency:
 jobs:
   rdp:
     runs-on: windows-latest
-    timeout-minutes: 300
+    timeout-minutes: 300   # EXACT 5 HOURS
 
     env:
+      # ===== RDP CREDENTIALS =====
       RDP_USER: DEVXRDP
+      RDP_PASS: Rdp!9Xq#2025
+
+      # ===== FIXED TAILSCALE NAME =====
       TS_HOSTNAME: DEVXRDP
 
-      # Use GitHub Secrets for password
-      # Set in repo: Settings → Secrets and variables → Actions → New repository secret
-      RDP_PASS: ${{ secrets.RDP_PASS }}
-
     steps:
-      - name: Show disk space (C: and D:)
-        shell: pwsh
-        run: |
-          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Verify Python
-        shell: pwsh
-        run: |
-          python --version
-          python -m pip --version
-
-      - name: (Optional) Use D:\ for temp to reduce C: pressure
-        shell: pwsh
-        run: |
-          if (Test-Path "D:\") {
-            New-Item -ItemType Directory -Force -Path "D:\temp" | Out-Null
-            $env:TEMP="D:\temp"
-            $env:TMP="D:\temp"
-            [Environment]::SetEnvironmentVariable("TEMP","D:\temp","Machine")
-            [Environment]::SetEnvironmentVariable("TMP","D:\temp","Machine")
-            Write-Host "TEMP/TMP set to D:\temp"
-          } else {
-            Write-Host "D:\ not present on this runner."
-          }
 
       - name: Install and start Tailscale
-        shell: pwsh
         run: |
           $exe = "$env:ProgramFiles\Tailscale\tailscale.exe"
 
           if (-not (Test-Path $exe)) {
-            Invoke-WebRequest -UseBasicParsing `
+            Invoke-WebRequest `
               -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" `
               -OutFile "$env:TEMP\tailscale.msi"
 
@@ -81,19 +51,19 @@ jobs:
             --reset
 
       - name: Show Tailscale IP (DEVXRDP)
-        shell: pwsh
         run: |
           $exe = "$env:ProgramFiles\Tailscale\tailscale.exe"
           $ip = & $exe ip -4 | Select-Object -First 1
-          Write-Host "RDP NAME: $env:TS_HOSTNAME"
-          Write-Host "RDP IP  : $ip"
-          Write-Host "USER    : $env:RDP_USER"
 
-      - name: Enable RDP user + firewall rules
-        shell: pwsh
+          Write-Host ""
+          Write-Host "================================="
+          Write-Host " RDP NAME : DEVXRDP"
+          Write-Host " RDP IP   : $ip"
+          Write-Host " USER     : DEVXRDP"
+          Write-Host "================================="
+
+      - name: Enable RDP
         run: |
-          if (-not $env:RDP_PASS) { throw "RDP_PASS secret is missing." }
-
           $sec = ConvertTo-SecureString $env:RDP_PASS -AsPlainText -Force
 
           if (-not (Get-LocalUser -Name $env:RDP_USER -ErrorAction SilentlyContinue)) {
@@ -112,11 +82,12 @@ jobs:
 
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: Keep alive (5 hours)
-        shell: pwsh
+      - name: KEEP ALIVE (5 HOURS CONTINUOUS)
         run: |
           $end = (Get-Date).AddHours(5)
-          while ((Get-Date) -lt $end) { Start-Sleep -Seconds 60 }
+          while ((Get-Date) -lt $end) {
+            Start-Sleep -Seconds 60
+          }
 
       - name: Finished
         run: echo "DEVXRDP session ended after 5 hours"
